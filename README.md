@@ -1,3 +1,25 @@
+How to Work on This Repo
+
+Clone the repo (first time only): git clone https://github.com/YourTeam/FTC-Repo.git cd FTC-Repo
+
+Create a new branch for your work: git checkout -b feature-name (replace feature-name with something like drive-code or autonomous)
+
+Make your code changes in the TeamCode module using Android Studio.
+
+Save and commit your changes: git add . git commit -m "Describe your change here"
+
+Push your branch to GitHub: git push origin feature-name
+
+Merge your work back into main:
+
+If auto-push is allowed: git checkout main git pull git merge feature-name git push origin main
+
+If pull requests are required: Go to GitHub, open a Pull Request, wait for approval, then merge.
+
+
+
+
+
 ## NOTICE
 
 This repository contains the public FTC SDK for the DECODE (2025-2026) competition season.

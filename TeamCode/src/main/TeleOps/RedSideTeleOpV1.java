@@ -158,9 +158,9 @@ public class RedSideTeleOpV1 extends LinearOpMode {
 
     // Turret
     final double SHOT_TPR = 537.7;
-    double kP = 0.06;
-    double deadband = 1.0;
-    double RotatemaxPower = 0.5;
+    double kP = 0.07;
+    double deadband = 3.0;
+    double RotatemaxPower = 0.6;
     private int centerTicks, minTicks, maxTicks;
 
     private int nextSlotSingleShot = 0;
@@ -334,8 +334,12 @@ public class RedSideTeleOpV1 extends LinearOpMode {
     private ElapsedTime ballLiftTimer = new ElapsedTime();
     private boolean ballLiftRetracting = false;
     //shooter smoothing
-    private final int SMOOTH_SIZE = 10;
+    private final int SMOOTH_SIZE = 15;
     private LinkedList<Double> horizDistHistory = new LinkedList<>();
+
+    // class fields
+    private double lastSmoothDistIn = -1.0;
+
     private final double COLOR_DETECT_DIST_CM = 2.0;
     @Override
     public void runOpMode() {
@@ -359,6 +363,8 @@ public class RedSideTeleOpV1 extends LinearOpMode {
         robot.RevM.setZeroPowerBehavior(BRAKE);
         //robot.RevM.setMode(DcMotorEx.RunMode.RUN_USING_ENCODER);
         robot.RevM.setPower(0);
+        robot.RevM.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        robot.RevM.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
 
         robot.PitchS.setPosition(SERVO_MIN_POS);
         robot.BallLiftS.setPosition(1.0);
@@ -471,7 +477,7 @@ public class RedSideTeleOpV1 extends LinearOpMode {
 //                autoStep = 0;
 //                autoTimer.reset();
 //            }
-            if (gamepad2.b){
+            if (gamepad2.xWasPressed()){
                 robot.ShotM.setPower(0.0);
                 robot.PitchS.setPosition(1.0);
             }
@@ -583,12 +589,12 @@ public class RedSideTeleOpV1 extends LinearOpMode {
 
                 if (InTakeOn) {
                     robot.InM.setPower(-1.0);
-                    //robot.RevM.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+                    robot.RevM.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
                     //robot.RevM.setPower(0.2);
                 } else {
                     robot.InM.setPower(0);
-                    //robot.RevM.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-                    robot.RevM.setPower(0);
+                    robot.RevM.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+                    //robot.RevM.setPower(0);
                 }
 
                 InTakeOn = !InTakeOn;
@@ -697,27 +703,39 @@ public class RedSideTeleOpV1 extends LinearOpMode {
                 }
             }
 
-            // ----------------------------
-            // Distance, Power, Angle
-            // ----------------------------
-            // inside your loop:
+            double alpha = 0.12; // smaller = smoother
+            double maxStep = 6.0;   // inches per loop (tune this!)
+
             double horizDistM = Math.hypot(robotX, robotZ);
-            double horizDistIn = horizDistM / 0.0254;
-// store new value
+
             horizDistHistory.add(horizDistM);
             if (horizDistHistory.size() > SMOOTH_SIZE) {
                 horizDistHistory.removeFirst();
             }
 
-// compute average
-            double avgHorizDistM = horizDistHistory.stream().mapToDouble(d -> d).average().orElse(horizDistM);
+            double rollingAvgM = horizDistHistory
+                    .stream()
+                    .mapToDouble(d -> d)
+                    .average()
+                    .orElse(horizDistM);
 
-// convert to inches
-            double avgHorizDistIn = avgHorizDistM / 0.0254;
+            double smoothDistM = alpha * horizDistM + (1 - alpha) * rollingAvgM;
+
+            double smoothDistIn = smoothDistM / 0.0254;
+
+            if (lastSmoothDistIn < 5) {
+                lastSmoothDistIn = smoothDistIn;
+            }
+            double delta = smoothDistIn - lastSmoothDistIn;
+            if (Math.abs(delta) > maxStep) {
+                smoothDistIn = lastSmoothDistIn + Math.copySign(maxStep, delta);
+            }
+            lastSmoothDistIn = smoothDistIn;
 
 
-            double distClamped = Range.clip(avgHorizDistIn, MIN_DIST_IN, MAX_DIST_IN);
-            double SdistClamped = Range.clip(avgHorizDistIn, SMIN_DIST_IN, SMAX_DIST_IN);
+            double distClamped = Range.clip(smoothDistIn, MIN_DIST_IN, MAX_DIST_IN);
+
+            double SdistClamped = Range.clip(smoothDistIn, SMIN_DIST_IN, SMAX_DIST_IN);
 
             double normalized = (distClamped - MIN_DIST_IN) /
                     (MAX_DIST_IN - MIN_DIST_IN);
@@ -772,32 +790,37 @@ public class RedSideTeleOpV1 extends LinearOpMode {
             // ----------------------------
             // Manual overrides
             // ----------------------------
-            if (gamepad2.xWasPressed()) {
-                //Gamepad2x = !Gamepad2x;
-                robot.ShotM.setPower(0.95);
-                robot.PitchS.setPosition(0.1);
+            if (gamepad2.x) {
+                Gamepad2x = !Gamepad2x;
+                if (Gamepad2x) {
+                    robot.ShotM.setPower(0.75);
+                    robot.PitchS.setPosition(0.5);
+                } else {
+                    robot.ShotM.setPower(0.0);
+                    robot.PitchS.setPosition(0.0);
+                }
             }
 
             if (gamepad2.rightStickButtonWasPressed()) {
-                //rightStickButton = !rightStickButton;
-                //if (rightStickButton) {
-                robot.ShotM.setPower(0.75);
-                robot.PitchS.setPosition(0.5);
-//                } else {
-//                    robot.ShotM.setPower(0.0);
-//                    robot.PitchS.setPosition(0.0);
-//                }
+                rightStickButton = !rightStickButton;
+                if (rightStickButton) {
+                    robot.ShotM.setPower(0.75);
+                    robot.PitchS.setPosition(0.5);
+                } else {
+                    robot.ShotM.setPower(0.0);
+                    robot.PitchS.setPosition(0.0);
+                }
             }
 
             if (gamepad2.leftStickButtonWasPressed()) {
-                //leftStickButton = !leftStickButton;
-                //if (leftStickButton) {
-                robot.ShotM.setPower(0.55);
-                robot.PitchS.setPosition(1.0);
-//                } else {
-//                    robot.ShotM.setPower(0.0);
-//                    robot.PitchS.setPosition(0.0);
-//                }
+                leftStickButton = !leftStickButton;
+                if (leftStickButton) {
+                    robot.ShotM.setPower(0.55);
+                    robot.PitchS.setPosition(1.0);
+                } else {
+                    robot.ShotM.setPower(0.0);
+                    robot.PitchS.setPosition(0.0);
+                }
             }
 
             // ----------------------------
